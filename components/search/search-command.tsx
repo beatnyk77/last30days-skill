@@ -8,22 +8,66 @@ import { FilterDrawer } from "./filter-drawer";
 import { Search, Loader2, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+import { SearchProgress } from "./search-progress";
+
 export function SearchCommand() {
     const [keyword, setKeyword] = useState("");
     const [platforms, setPlatforms] = useState(["reddit", "x", "youtube", "hn"]);
     const [isSearching, setIsSearching] = useState(false);
+    const [status, setStatus] = useState<"idle" | "running" | "complete" | "error">("idle");
+    const [logs, setLogs] = useState<any[]>([]);
 
-    const handleSearch = () => {
+    const handleSearch = async () => {
         if (!keyword) return;
+
+        setLogs([]);
         setIsSearching(true);
-        // This will trigger the SSE stream in the next step
-        console.log("Initiating search for:", keyword, platforms);
-        // Mocking progress for now
-        setTimeout(() => setIsSearching(false), 2000);
+        setStatus("running");
+
+        try {
+            const response = await fetch("/api/search", {
+                method: "POST",
+                body: JSON.stringify({ keyword, platforms, daysBack: 30 }),
+                headers: { "Content-Type": "application/json" }
+            });
+
+            if (!response.body) return;
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+
+                const chunk = decoder.decode(value);
+                const lines = chunk.split("\n\n");
+
+                for (const line of lines) {
+                    if (line.startsWith("data: ")) {
+                        try {
+                            const data = JSON.parse(line.replace("data: ", ""));
+                            if (data.type === "done") {
+                                setStatus("complete");
+                                setIsSearching(false);
+                                // Redirect to report page in production
+                            } else {
+                                setLogs(prev => [...prev, data]);
+                            }
+                        } catch (e) {
+                            console.error("Failed to parse SSE line:", line);
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            setStatus("error");
+            setIsSearching(false);
+            setLogs(prev => [...prev, { type: "error", message: "Connection lost.", timestamp: new Date().toLocaleTimeString() }]);
+        }
     };
 
     return (
-        <div className="w-full space-y-8">
+        <div className="w-full space-y-12">
             <div className="relative group">
                 <div className="absolute -inset-1 bg-gradient-to-r from-signal/20 to-ice/20 blur opacity-25 group-focus-within:opacity-100 transition-opacity rounded-sm" />
                 <div className="relative flex flex-col gap-4 p-6 bg-surface border border-border rounded-sm shadow-2xl">
@@ -69,6 +113,10 @@ export function SearchCommand() {
                 </div>
             </div>
 
+            {status !== "idle" && (
+                <SearchProgress logs={logs} status={status} keyword={keyword} />
+            )}
+
             {/* Suggested Keywords (Micro-interactions) */}
             <div className="flex items-center gap-4 reveal-item" style={{ animationDelay: "0.4s" }}>
                 <span className="font-mono text-[9px] uppercase tracking-widest text-muted-foreground">Recent Targets //</span>
@@ -76,7 +124,10 @@ export function SearchCommand() {
                     {["alternatives to asana", "is mercari safe", "best k8s monitoring"].map((tag) => (
                         <button
                             key={tag}
-                            onClick={() => setKeyword(tag)}
+                            onClick={() => {
+                                setKeyword(tag);
+                                // Optional: trigger search immediately?
+                            }}
                             className="text-[10px] font-ui px-3 py-1 border border-border hover:border-signal/30 hover:text-signal transition-all rounded-full bg-surface/30"
                         >
                             {tag}

@@ -1,10 +1,12 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { PageHeader } from "@/components/layout/page-header";
 import { SearchCommand } from "@/components/search/search-command";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Activity, Clock, ShieldInfo, Zap } from "lucide-react";
+import { Activity, Clock, Shield, Zap } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 export default function DashboardPage() {
     return (
@@ -61,7 +63,7 @@ export default function DashboardPage() {
                             {[
                                 { label: "Active Pipelines", value: "0", icon: Zap, color: "text-signal" },
                                 { label: "Reports Generated", value: "0", icon: Activity, color: "text-ice" },
-                                { label: "Credits Available", value: "3/10", icon: ShieldInfo, color: "text-warm" }
+                                { label: "Credits Available", value: "3/10", icon: Shield, color: "text-warm" }
                             ].map((stat, i) => (
                                 <div key={i} className="p-6 border border-border bg-surface/50 rounded-sm flex items-center justify-between group hover:border-border/80 transition-colors">
                                     <div className="space-y-1">
@@ -86,8 +88,8 @@ export default function DashboardPage() {
                             <p className="font-ui text-[13px] font-medium leading-relaxed">
                                 Convert any intelligence unit into a pipeline. Continuous monitoring, zero latency.
                             </p>
-                            <Button className="w-full bg-background text-signal hover:bg-background/90 font-bold uppercase tracking-widest text-[10px] h-10 rounded-sm">
-                                Build Pipeline
+                            <Button className="w-full bg-background text-signal hover:bg-background/90 font-bold uppercase tracking-widest text-[10px] h-10 rounded-sm" asChild>
+                                <span>Build Pipeline</span>
                             </Button>
                         </CardContent>
                     </Card>
