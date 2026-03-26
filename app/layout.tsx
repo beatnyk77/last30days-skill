@@ -25,8 +25,28 @@ const dmMono = DM_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "IntentRadar — Know who is ready to buy.",
-  description: "30 days of signal. One report. Close deals before competitors see them. Deep intent intelligence scanning Reddit, X, YouTube, HN, and Polymarket.",
+  title: {
+    default: "IntentRadar — Multi-platform Intelligence Reconnaissance",
+    template: "%s | IntentRadar"
+  },
+  description: "Next-generation intent intelligence engine. Turn any keyword into a multi-platform tactical reconnaissance report. 30 days of signal from Reddit, X, YouTube, HN, and Polymarket.",
+  metadataBase: new URL("https://intentradar.ai"),
+  openGraph: {
+    type: "website",
+    locale: "en_US",
+    url: "https://intentradar.ai",
+    siteName: "IntentRadar",
+    title: "IntentRadar | Strategic Intent Intelligence",
+    description: "Multi-stream reconnaissance for high-growth tactical teams.",
+    images: ["/og-image.png"]
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "IntentRadar | Intelligence Engine",
+    description: "Cross-stream intent scoring and buyer stage detection.",
+    images: ["/og-image.png"],
+    creator: "@intentradar"
+  }
 };
 
 export default function RootLayout({

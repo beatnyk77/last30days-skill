@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 
 export async function getCredits(userId: string) {
-    const supabase = createClient();
+    const supabase = await createClient();
     const { data, error } = await supabase
         .from("profiles")
         .select("credits, tier, max_pipelines")
@@ -13,7 +13,7 @@ export async function getCredits(userId: string) {
 }
 
 export async function consumeCredit(userId: string, amount: number = 1) {
-    const supabase = createClient();
+    const supabase = await createClient();
 
     // Rpc call to decrement credits atomically to prevent race conditions
     const { data, error } = await supabase.rpc("decrement_credits", {
