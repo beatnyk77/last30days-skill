@@ -31,38 +31,48 @@ export function SearchCommand() {
                 headers: { "Content-Type": "application/json" }
             });
 
-            if (!response.body) return;
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-
-            while (true) {
-                const { value, done } = await reader.read();
-                if (done) break;
-
-                const chunk = decoder.decode(value);
-                const lines = chunk.split("\n\n");
-
-                for (const line of lines) {
-                    if (line.startsWith("data: ")) {
-                        try {
-                            const data = JSON.parse(line.replace("data: ", ""));
-                            if (data.type === "done") {
-                                setStatus("complete");
-                                setIsSearching(false);
-                                // Redirect to report page in production
-                            } else {
-                                setLogs(prev => [...prev, data]);
-                            }
-                        } catch (e) {
-                            console.error("Failed to parse SSE line:", line);
-                        }
-                    }
-                }
+            if (!response.ok) {
+                const errorObj = await response.json();
+                throw new Error(errorObj.error || "Failed to initiate search.");
             }
-        } catch (error) {
+
+            const { run_id } = await response.json();
+
+            // Polling loop
+            const pollInterval = setInterval(async () => {
+                try {
+                    const statusRes = await fetch(`/api/runs/${run_id}/status`);
+                    if (!statusRes.ok) return;
+
+                    const data = await statusRes.json();
+
+                    // Update logs
+                    if (data.logs && Array.isArray(data.logs)) {
+                        setLogs(data.logs);
+                    }
+
+                    // Check completion
+                    if (data.status === "success") {
+                        clearInterval(pollInterval);
+                        setStatus("complete");
+                        setIsSearching(false);
+
+                        // Redirect to the real report page using the run ID
+                        window.location.href = `/reports/${run_id}`;
+                    } else if (data.status === "failed" || data.status === "error") {
+                        clearInterval(pollInterval);
+                        setStatus("error");
+                        setIsSearching(false);
+                    }
+                } catch (e) {
+                    console.error("Error polling status:", e);
+                }
+            }, 3000); // 3 seconds interval
+
+        } catch (error: any) {
             setStatus("error");
             setIsSearching(false);
-            setLogs(prev => [...prev, { type: "error", message: "Connection lost.", timestamp: new Date().toLocaleTimeString() }]);
+            setLogs(prev => [...prev, { type: "error", message: error.message || "Connection lost.", timestamp: new Date().toLocaleTimeString() }]);
         }
     };
 

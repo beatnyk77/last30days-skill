@@ -1,7 +1,7 @@
-import { NextRequest } from "next/server";
-import { runIntelligenceEngine } from "@/lib/last30days/runner";
-import { auth } from "@/lib/auth";
+import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@/lib/auth/config";
 import { consumeCredit } from "@/lib/actions/credits";
+import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
@@ -11,59 +11,62 @@ export async function POST(req: NextRequest) {
     });
 
     if (!session) {
-        return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { keyword, platforms, daysBack } = await req.json();
 
-    const encoder = new TextEncoder();
+    try {
+        // Deduct credit before starting
+        await consumeCredit(session.user.id);
 
-    const stream = new ReadableStream({
-        async start(controller) {
-            const sendEvent = (data: any) => {
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
-            };
+        const supabase = await createClient();
 
-            try {
-                // Deduct credit before starting
-                await consumeCredit(session.user.id);
+        // Create async job record
+        const { data, error } = await supabase.from("pipeline_runs").insert({
+            user_id: session.user.id,
+            keyword: keyword,
+            status: "pending",
+            logs: [{
+                type: "info",
+                message: "Tactical credit verified. Initializing reconnaissance sidecar...",
+                timestamp: new Date().toLocaleTimeString()
+            }]
+        }).select("id").single();
 
-                sendEvent({
-                    type: "info",
-                    message: "Tactical credit verified. Initializing reconnaissance engine...",
-                    timestamp: new Date().toLocaleTimeString()
-                });
+        if (error) throw new Error(`Failed to create pipeline run: ${error.message}`);
 
-                // Invoke the live engine
-                const result = await runIntelligenceEngine({
-                    keyword,
-                    platforms,
-                    daysBack: daysBack || 30,
-                    onLog: (log) => {
-                        sendEvent(log);
-                    }
-                });
+        const runId = data.id;
 
-                // Final Event: Done with the actual report data or ID
-                sendEvent({ type: "done", result });
-                controller.close();
-            } catch (error: any) {
-                console.error("Engine execution error:", error);
-                sendEvent({
-                    type: "error",
-                    message: error.message || "Intelligence engine failed.",
-                    timestamp: new Date().toLocaleTimeString()
-                });
-                controller.close();
-            }
-        },
-    });
+        // Async fire-and-forget to python sidecar
+        const sidecarUrl = process.env.SIDECAR_URL || "http://localhost:8000";
 
-    return new Response(stream, {
-        headers: {
-            "Content-Type": "text/event-stream",
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-        },
-    });
+        fetch(`${sidecarUrl}/run`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                run_id: runId,
+                keyword,
+                platforms,
+                daysBack: daysBack || 30
+            })
+        }).catch(err => {
+            console.error("Sidecar dispatch error:", err);
+            // We do not await this, so if it fails, it fails asynchronously,
+            // but we could try to mark the run as failed in Supabase.
+            supabase.from("pipeline_runs").update({
+                status: "failed",
+                logs: [{ type: "error", message: "Sidecar unreachable.", timestamp: new Date().toLocaleTimeString() }]
+            }).eq("id", runId).then();
+        });
+
+        // Return immediately with the job ID for the frontend to poll
+        return NextResponse.json({ run_id: runId, status: "pending" });
+
+    } catch (error: any) {
+        console.error("Search initialization error:", error);
+        return NextResponse.json({ error: error.message || "Intelligence engine initialization failed." }, { status: 500 });
+    }
 }
